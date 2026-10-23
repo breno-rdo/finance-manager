@@ -1,5 +1,6 @@
 package com.financemanager.finance_manager.user;
 
+import com.financemanager.finance_manager.common.validation.MaxBytesValidator;
 import com.financemanager.finance_manager.config.BootstrapAdminProperties;
 import java.time.Clock;
 import java.util.Locale;
@@ -38,8 +39,8 @@ public class AdminBootstrap implements ApplicationRunner {
         if (!properties.isConfigured()) {
             return;
         }
-        if (properties.password().length() < 8) {
-            throw new IllegalStateException("APP_ADMIN_PASSWORD must have at least 8 characters.");
+        if (properties.password().length() < 8 || MaxBytesValidator.exceeds(properties.password(), 72)) {
+            throw new IllegalStateException("APP_ADMIN_PASSWORD must have 8 characters and at most 72 bytes.");
         }
         String email = properties.email().trim().toLowerCase(Locale.ROOT);
         if (userRepository.existsByEmail(email)) {

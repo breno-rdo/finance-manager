@@ -47,6 +47,10 @@ public class RefreshToken {
         this.createdAt = createdAt;
     }
 
+    public Long getId() {
+        return id;
+    }
+
     public User getUser() {
         return user;
     }

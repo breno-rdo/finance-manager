@@ -4,6 +4,7 @@ import com.financemanager.finance_manager.auth.dto.LoginRequest;
 import com.financemanager.finance_manager.auth.dto.RegisterRequest;
 import com.financemanager.finance_manager.auth.dto.TokenResponse;
 import com.financemanager.finance_manager.auth.dto.UserResponse;
+import com.financemanager.finance_manager.common.validation.MaxBytesValidator;
 import com.financemanager.finance_manager.config.JwtProperties;
 import com.financemanager.finance_manager.user.Role;
 import com.financemanager.finance_manager.user.User;
@@ -24,6 +25,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
+
+    /** BCrypt only uses the first 72 bytes of a password. */
+    public static final int MAX_PASSWORD_BYTES = 72;
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -66,6 +70,10 @@ public class AuthService {
 
     @Transactional
     public TokenResponse login(LoginRequest request) {
+        // No stored password can exceed BCrypt's limit, so this cannot match; also avoids an encoder error.
+        if (MaxBytesValidator.exceeds(request.password(), MAX_PASSWORD_BYTES)) {
+            throw new InvalidCredentialsException();
+        }
         User user = userRepository.findByEmail(normalize(request.email())).orElse(null);
         String hash = user != null ? user.getPasswordHash() : dummyHash;
         boolean matches = passwordEncoder.matches(request.password(), hash);
@@ -85,14 +93,16 @@ public class AuthService {
         Instant now = clock.instant();
         RefreshToken stored = refreshTokenRepository.findByTokenHash(hash(rawRefreshToken))
                 .orElseThrow(InvalidRefreshTokenException::new);
-        if (stored.isRevoked()) {
-            refreshTokenRepository.revokeAllActiveByUserId(stored.getUser().getId(), now);
-            throw new InvalidRefreshTokenException();
-        }
         if (stored.isExpired(now)) {
             throw new InvalidRefreshTokenException();
         }
-        stored.revoke(now);
+        // The check and the revocation are one atomic statement, so two simultaneous requests with the
+        // same token cannot both succeed. A token that was already revoked (earlier or a moment ago
+        // by a concurrent request) is treated as reuse.
+        if (stored.isRevoked() || refreshTokenRepository.revokeIfActive(stored.getId(), now) == 0) {
+            refreshTokenRepository.revokeAllActiveByUserId(stored.getUser().getId(), now);
+            throw new InvalidRefreshTokenException();
+        }
         return issueTokens(stored.getUser());
     }
 

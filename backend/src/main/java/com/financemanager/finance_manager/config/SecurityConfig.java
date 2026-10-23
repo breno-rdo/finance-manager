@@ -2,6 +2,8 @@ package com.financemanager.finance_manager.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.List;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.context.annotation.Bean;
@@ -22,6 +24,9 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * Stateless JWT security: every request carries its own signed access token.
@@ -35,6 +40,7 @@ public class SecurityConfig {
                                             JwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
         http
                 // CSRF protects cookie-based sessions; with a Bearer header and no session there is nothing to forge.
+                .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -54,6 +60,22 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable);
         return http.build();
+    }
+
+    /**
+     * Browsers block a page from calling another origin (the Vite app on :5173 calling the API on :8080)
+     * unless the API says so. Preflight (OPTIONS) requests are answered here, before authorization runs.
+     */
+    @Bean
+    CorsConfigurationSource corsConfigurationSource(CorsProperties properties) {
+        CorsConfiguration cors = new CorsConfiguration();
+        cors.setAllowedOrigins(properties.allowedOrigins());
+        cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        cors.setMaxAge(Duration.ofHours(1));
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", cors);
+        return source;
     }
 
     /** Turns the token's "role" claim (e.g. ADMIN) into the authority ROLE_ADMIN used by hasRole("ADMIN"). */

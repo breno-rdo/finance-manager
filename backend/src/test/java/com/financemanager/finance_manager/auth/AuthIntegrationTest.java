@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -229,6 +231,43 @@ class AuthIntegrationTest {
     @Test
     void refreshRejectsUnknownTokens() throws Exception {
         refresh("this-token-was-never-issued").andExpect(status().isUnauthorized());
+    }
+
+    // ---- password size (BCrypt reads at most 72 bytes) ----
+
+    @Test
+    void registerRejectsPasswordsOverTheByteLimitEvenWhenTheyHaveFewCharacters() throws Exception {
+        // 37 characters, but 74 bytes in UTF-8.
+        String accented = "é".repeat(37);
+
+        register(uniqueEmail(), accented)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.password").exists());
+    }
+
+    @Test
+    void loginWithAnOverlongPasswordIsUnauthorizedNotAServerError() throws Exception {
+        login(uniqueEmail(), "x".repeat(200)).andExpect(status().isUnauthorized());
+    }
+
+    // ---- CORS ----
+
+    @Test
+    void preflightFromTheConfiguredOriginIsAllowed() throws Exception {
+        mockMvc.perform(options("/auth/login")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "content-type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:5173"));
+    }
+
+    @Test
+    void preflightFromAnotherOriginIsRejected() throws Exception {
+        mockMvc.perform(options("/auth/login")
+                        .header(HttpHeaders.ORIGIN, "http://evil.example.com")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST"))
+                .andExpect(status().isForbidden());
     }
 
     // ---- helpers ----
