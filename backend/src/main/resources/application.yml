@@ -18,6 +18,18 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+app:
+  jwt:
+    # Dev-only default so the app runs locally; production MUST set JWT_SECRET.
+    secret: ${JWT_SECRET:dev-only-secret-change-me-in-production-0123456789}
+    issuer: finance-manager
+    access-token-ttl: 15m
+    refresh-token-ttl: 7d
+  bootstrap-admin:
+    # First ADMIN, created at startup if absent. Leave unset to skip.
+    email: ${APP_ADMIN_EMAIL:}
+    password: ${APP_ADMIN_PASSWORD:}
+
 management:
   endpoints:
     web:
